@@ -1,0 +1,48 @@
+name: Current
+include:
+  - project.local.yml
+options:
+  bundleIdPrefix: com.h2ocean
+targets:
+  Current:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources
+    settings:
+      base:
+        # 沿用旧 Bundle ID，避免辅助功能授权失效（TCC 按 Bundle ID + 签名标识）。
+        PRODUCT_BUNDLE_IDENTIFIER: com.h2ocean.WindowClicker
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Current
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        SWIFT_VERSION: "5.0"
+  CurrentTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Tests
+    dependencies:
+      - target: Current
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.h2ocean.WindowClickerTests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+schemes:
+  Current:
+    build:
+      targets:
+        Current: all
+        CurrentTests:
+          - test
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - CurrentTests

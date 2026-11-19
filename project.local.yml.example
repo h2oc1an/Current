@@ -1,0 +1,10 @@
+# 复制为 project.local.yml 并填入你自己的签名信息。
+# project.local.yml 已被 .gitignore 忽略，不会提交。
+# 辅助功能授权与签名身份绑定，请保持 Bundle ID 和签名稳定。
+targets:
+  Current:
+    settings:
+      base:
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development: YOUR NAME (XXXXXXXXXX)"
+        DEVELOPMENT_TEAM: XXXXXXXXXX

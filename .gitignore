@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Xcode / SwiftPM 构建产物
+build/
+DerivedData/
+*.xcodeproj
+xcuserdata/
+*.xcworkspace
+*.xcuserstate
+.swiftpm/
+
+# 本地签名配置（含个人证书信息）
+project.local.yml
+
+# 项目交接文档（不提交）
+PROJECT_CONTEXT.md
