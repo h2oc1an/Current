@@ -10,6 +10,12 @@
   macOS 14+ · SwiftUI · 本地保存 · 无需目标应用提供脚本接口
 </p>
 
+## 下载
+
+[下载 Current 最新版 DMG](https://github.com/h2oc1an/Current/releases/latest)
+
+打开 DMG 后，将 `Current.app` 拖入 Applications 即可完成安装。首次运行需要授予辅助功能权限。
+
 ## 功能特性
 
 | 功能 | 说明 |
