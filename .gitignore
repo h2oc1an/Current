@@ -8,6 +8,7 @@ DerivedData/
 xcuserdata/
 *.xcworkspace
 *.xcuserstate
+*.log
 .swiftpm/
 
 # 本地签名配置（含个人证书信息）
