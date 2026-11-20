@@ -14,7 +14,7 @@ struct ContentView: View {
                 }
                 .frame(width: 640, height: 680)
                 .overlay(alignment: .bottomTrailing) {
-                    Button(model.selectedTaskID == nil ? "保存为任务" : "保存修改") {
+                    Button(model.isCreatingTask ? "保存为任务" : "保存修改") {
                         model.saveTask()
                     }
                     .buttonStyle(.borderedProminent)
@@ -361,6 +361,11 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Toggle("选点时同时点击", isOn: $model.clickAfterPicking)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(model.isWorking)
 
             HStack {
                 Button("添加步骤") {

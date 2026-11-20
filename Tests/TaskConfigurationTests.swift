@@ -20,10 +20,21 @@ final class TaskConfigurationTests: XCTestCase {
             ClickStep(point: CGPoint(x: 1, y: 2), minimumIntervalText: "0.5", maximumIntervalText: "1.5")
         ]
         configuration.flowCycleText = "3"
+        configuration.clickAfterPicking = true
 
         let task = ClickTask(name: "测试任务", configuration: configuration)
         let decoded = try JSONDecoder().decode(ClickTask.self, from: JSONEncoder().encode(task))
         XCTAssertEqual(decoded, task)
+    }
+
+    func testLegacyConfigurationDefaultsClickAfterPickingToFalse() throws {
+        let encoded = try JSONEncoder().encode(TaskConfiguration.initial)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "clickAfterPicking")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(TaskConfiguration.self, from: legacyData)
+        XCTAssertFalse(decoded.clickAfterPicking)
     }
 
     func testLibraryUpsertsAndDeletesTasks() {

@@ -66,6 +66,7 @@ final class AppModel: ObservableObject {
     @Published var countText = "10"
     @Published private(set) var steps: [ClickStep] = []
     @Published var flowCycleText = "1"
+    @Published var clickAfterPicking = false
     @Published private(set) var isWorking = false
     @Published private(set) var isRepeating = false
     @Published private(set) var isRunningFlow = false
@@ -131,9 +132,12 @@ final class AppModel: ObservableObject {
 
     func startNewTask() {
         guard !isWorking else { return }
-        selectedTaskID = nil
+        let name = nextTaskName()
+        let task = ClickTask(name: name, configuration: .initial)
+        tasks.append(task)
+        selectedTaskID = task.id
         isCreatingTask = true
-        taskNameText = nextTaskName()
+        taskNameText = name
         apply(configuration: .initial)
         clearMessages()
         persistTaskLibrary()
@@ -211,7 +215,8 @@ final class AppModel: ObservableObject {
             intervalText: intervalText,
             countText: countText,
             steps: steps,
-            flowCycleText: flowCycleText
+            flowCycleText: flowCycleText,
+            clickAfterPicking: clickAfterPicking
         )
     }
 
@@ -224,6 +229,7 @@ final class AppModel: ObservableObject {
         countText = configuration.countText
         steps = configuration.steps
         flowCycleText = configuration.flowCycleText
+        clickAfterPicking = configuration.clickAfterPicking
     }
 
     private func showMissingWindowMessageIfNeeded(for configuration: TaskConfiguration) {
@@ -269,7 +275,9 @@ final class AppModel: ObservableObject {
         presentPicker(for: window) { [weak self] point in
             guard let self else { return }
             steps.append(ClickStep(point: point))
-            statusMessage = "已添加第 \(steps.count) 步：X \(Int(point.x))，Y \(Int(point.y))"
+            let message = "已添加第 \(steps.count) 步：X \(Int(point.x))，Y \(Int(point.y))"
+            statusMessage = message
+            performPickedClick(window: window, point: point, successMessage: message)
         }
     }
 
@@ -280,7 +288,9 @@ final class AppModel: ObservableObject {
         presentPicker(for: window) { [weak self] point in
             guard let self, let index = steps.firstIndex(where: { $0.id == id }) else { return }
             steps[index].point = point
-            statusMessage = "第 \(index + 1) 步已更新为 X \(Int(point.x))，Y \(Int(point.y))"
+            let message = "第 \(index + 1) 步已更新为 X \(Int(point.x))，Y \(Int(point.y))"
+            statusMessage = message
+            performPickedClick(window: window, point: point, successMessage: message)
         }
     }
 
@@ -314,6 +324,22 @@ final class AppModel: ObservableObject {
                 statusMessage = "已取消选点"
             case .failed(let message):
                 errorMessage = message
+            }
+        }
+    }
+
+    private func performPickedClick(window: WindowDescriptor, point: CGPoint, successMessage: String) {
+        guard clickAfterPicking, ensureAccessibilityPermission() else { return }
+        let mode = clickMode
+        isWorking = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { isWorking = false }
+            do {
+                _ = try await performClick(windowID: window.id, point: point, mode: mode)
+                statusMessage = "\(successMessage)，并已触发一次点击。"
+            } catch {
+                errorMessage = error.localizedDescription
             }
         }
     }

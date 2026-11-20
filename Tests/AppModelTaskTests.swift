@@ -13,6 +13,8 @@ final class AppModelTaskTests: XCTestCase {
 
         model.startNewTask()
         XCTAssertTrue(model.showsConfiguration)
+        XCTAssertEqual(model.tasks.map(\.name), ["任务 1"])
+        XCTAssertEqual(model.selectedTaskID, model.tasks.first?.id)
         model.taskNameText = "任务 A"
         model.countText = "12"
         model.saveTask()

@@ -48,6 +48,47 @@ struct TaskConfiguration: Codable, Equatable {
     var countText: String
     var steps: [ClickStep]
     var flowCycleText: String
+    var clickAfterPicking: Bool
+
+    init(
+        window: SavedWindow?,
+        selectedRelativePoint: CGPoint?,
+        clickMode: ClickMode,
+        executionMode: ExecutionMode,
+        intervalText: String,
+        countText: String,
+        steps: [ClickStep],
+        flowCycleText: String,
+        clickAfterPicking: Bool = false
+    ) {
+        self.window = window
+        self.selectedRelativePoint = selectedRelativePoint
+        self.clickMode = clickMode
+        self.executionMode = executionMode
+        self.intervalText = intervalText
+        self.countText = countText
+        self.steps = steps
+        self.flowCycleText = flowCycleText
+        self.clickAfterPicking = clickAfterPicking
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case window, selectedRelativePoint, clickMode, executionMode
+        case intervalText, countText, steps, flowCycleText, clickAfterPicking
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        window = try container.decodeIfPresent(SavedWindow.self, forKey: .window)
+        selectedRelativePoint = try container.decodeIfPresent(CGPoint.self, forKey: .selectedRelativePoint)
+        clickMode = try container.decode(ClickMode.self, forKey: .clickMode)
+        executionMode = try container.decode(ExecutionMode.self, forKey: .executionMode)
+        intervalText = try container.decode(String.self, forKey: .intervalText)
+        countText = try container.decode(String.self, forKey: .countText)
+        steps = try container.decode([ClickStep].self, forKey: .steps)
+        flowCycleText = try container.decode(String.self, forKey: .flowCycleText)
+        clickAfterPicking = try container.decodeIfPresent(Bool.self, forKey: .clickAfterPicking) ?? false
+    }
 
     static let initial = TaskConfiguration(
         window: nil,
