@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -5,6 +6,7 @@ struct WindowDescriptor: Hashable, Identifiable {
     let id: CGWindowID
     let ownerPID: pid_t
     let ownerName: String
+    let ownerBundleIdentifier: String?
     let title: String
     let bounds: CGRect
 
@@ -58,6 +60,7 @@ struct WindowService {
                 id: number.uint32Value,
                 ownerPID: ownerNumber.int32Value,
                 ownerName: ownerName,
+                ownerBundleIdentifier: NSRunningApplication(processIdentifier: ownerNumber.int32Value)?.bundleIdentifier,
                 title: title,
                 bounds: bounds
             )

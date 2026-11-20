@@ -2,7 +2,7 @@
 
 原生 macOS 后台点击工具：选中任意已打开的窗口、在窗口中选点，然后在不切换窗口、不移动真实鼠标、不改变前台焦点的前提下执行单击或定时连点 —— 自动点击期间可以继续用电脑做别的事。
 
-```
+```text
 选择窗口 → 十字准星选点 → 单击 / 定时连点
 ```
 
@@ -10,6 +10,9 @@
 
 - 枚举并选择 Mac 上现存的窗口，十字准星选点（坐标相对窗口左上角，Esc 取消）
 - 单击、可配置间隔与次数的连点、随时停止
+- **任务列表**：左侧新增、删除和切换任务；右侧通过「保存为任务 / 保存修改」显式保存完整配置，重启后自动恢复上次选中的任务
+- **事件流**：在同一窗口内添加多个点击位置，每步可配置「点击后等待」的随机间隔范围（精确到 0.1 秒）；整条流程按指定的正整数次数循环，随时停止（不提供无限循环）
+- **运行保护**：全局 `⌃⌥Esc` 紧急停止（不依赖鼠标与前台应用）；循环次数必须有限，不提供无限循环；默认使用兼容性最好的前台模式
 - 窗口移动后点击位置跟随窗口原点；窗口缩小导致选点越界、窗口关闭/最小化/离开当前桌面时自动停止
 - 三种点击模式：
   - **窗口路由模式（推荐）**：无感。优先通过 Accessibility 直接 `AXPress` 目标控件，完全不产生鼠标事件；坐标处没有可按下控件时回退窗口路由合成点击
@@ -66,11 +69,14 @@ open build/DerivedData/Build/Products/Debug/Current.app
 
 ## 目录结构
 
-```
+```text
 Sources/
   CurrentApp.swift             应用入口
-  AppModel.swift               界面状态、单击/连点/取消、z-order 恢复调度
+  AppModel.swift               界面状态、单击/连点/事件流/取消、z-order 恢复调度
   ContentView.swift            主界面
+  FlowConfiguration.swift      事件流步骤模型与校验
+  TaskConfiguration.swift      任务快照、窗口匹配与任务库
+  TaskStore.swift              任务 JSON 本地持久化
   PickerController.swift       透明十字准星选点面板
   ClickEngine.swift            模式分发与回退
   ClickDriver.swift            驱动协议、投递通道、公共鼠标事件
@@ -85,6 +91,7 @@ Sources/
 Tests/
   WindowGeometryTests.swift    坐标换算测试
   RepeatConfigurationTests.swift 连点参数测试
+  FlowConfigurationTests.swift  事件流校验测试
 ```
 
 ## 参考

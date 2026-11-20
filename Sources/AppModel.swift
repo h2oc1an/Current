@@ -22,6 +22,11 @@ func frontDesc() -> String {
     return "\(app.localizedName ?? "?")(\(app.processIdentifier))"
 }
 
+enum ExecutionMode: String, Hashable, Codable {
+    case single
+    case flow
+}
+
 struct RepeatConfiguration: Equatable {
     static let minimumInterval: TimeInterval = 0.01
     static let maximumInterval: TimeInterval = 3_600
@@ -48,18 +53,33 @@ final class AppModel: ObservableObject {
         didSet {
             guard oldValue != selectedWindowID else { return }
             selectedRelativePoint = nil
+            // 步骤坐标相对窗口左上角，换窗口后旧步骤不再有效。
+            steps.removeAll()
             clearMessages()
         }
     }
+    // 默认使用兼容性最好的前台模式；无感的窗口路由模式需用户显式选择。
     @Published var clickMode: ClickMode = .foreground
+    @Published var executionMode: ExecutionMode = .single
     @Published private(set) var selectedRelativePoint: CGPoint?
     @Published var intervalText = "1"
     @Published var countText = "10"
+    @Published private(set) var steps: [ClickStep] = []
+    @Published var flowCycleText = "1"
     @Published private(set) var isWorking = false
     @Published private(set) var isRepeating = false
+    @Published private(set) var isRunningFlow = false
     @Published private(set) var completedCount = 0
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var tasks: [ClickTask] = []
+    @Published private(set) var selectedTaskID: UUID?
+    @Published private(set) var isCreatingTask = false
+    @Published var taskNameText = "任务 1"
+
+    var showsConfiguration: Bool {
+        selectedTaskID != nil || isCreatingTask
+    }
 
     var selectedWindow: WindowDescriptor? {
         guard let selectedWindowID else { return nil }
@@ -69,11 +89,32 @@ final class AppModel: ObservableObject {
     private let windowService = WindowService()
     private let clickEngine = ClickEngine()
     private let windowOrdering = WindowOrdering()
+    private let taskStore: TaskStore
     private var pickerController: PointPickerController?
     private var repeatTask: Task<Void, Never>?
+    private var flowTask: Task<Void, Never>?
+    private var globalKeyMonitor: Any?
+    private var localKeyMonitor: Any?
 
-    init() {
+    init(taskStore: TaskStore = TaskStore()) {
+        self.taskStore = taskStore
+        do {
+            let library = try taskStore.load()
+            tasks = library.tasks
+            if let selectedTaskID = library.selectedTaskID,
+               tasks.contains(where: { $0.id == selectedTaskID }) {
+                self.selectedTaskID = selectedTaskID
+            }
+        } catch {
+            errorMessage = "任务读取失败：\(error.localizedDescription)"
+        }
         refreshWindows()
+        if let task = selectedTask {
+            taskNameText = task.name
+            apply(configuration: task.configuration)
+            showMissingWindowMessageIfNeeded(for: task.configuration)
+        }
+        installEmergencyHotkey()
     }
 
     func refreshWindows() {
@@ -83,15 +124,184 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func choosePoint() {
+    private var selectedTask: ClickTask? {
+        guard let selectedTaskID else { return nil }
+        return tasks.first { $0.id == selectedTaskID }
+    }
+
+    func startNewTask() {
+        guard !isWorking else { return }
+        selectedTaskID = nil
+        isCreatingTask = true
+        taskNameText = nextTaskName()
+        apply(configuration: .initial)
         clearMessages()
-        guard let selectedWindowID,
-              let window = windowService.window(withID: selectedWindowID) else {
-            errorMessage = ClickError.targetWindowUnavailable.localizedDescription
-            refreshWindows()
+        persistTaskLibrary()
+    }
+
+    func selectTask(id: UUID) {
+        guard !isWorking else { return }
+        if selectedTaskID == id {
+            deselectTask()
             return
         }
+        guard let task = tasks.first(where: { $0.id == id }) else { return }
+        clearMessages()
+        selectedTaskID = id
+        isCreatingTask = false
+        taskNameText = task.name
+        apply(configuration: task.configuration)
+        showMissingWindowMessageIfNeeded(for: task.configuration)
+        if errorMessage == nil {
+            statusMessage = "已加载任务“\(task.name)”。"
+        }
+        persistTaskLibrary()
+    }
 
+    func deselectTask() {
+        guard !isWorking else { return }
+        selectedTaskID = nil
+        isCreatingTask = false
+        clearMessages()
+        persistTaskLibrary()
+    }
+
+    func saveTask() {
+        guard !isWorking, showsConfiguration else { return }
+        clearMessages()
+        let trimmedName = taskNameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = trimmedName.isEmpty ? nextTaskName() : trimmedName
+        taskNameText = name
+        let task = ClickTask(
+            id: selectedTaskID ?? UUID(),
+            name: name,
+            configuration: captureConfiguration()
+        )
+        var library = TaskLibrary(tasks: tasks, selectedTaskID: selectedTaskID)
+        library.upsert(task)
+        tasks = library.tasks
+        selectedTaskID = library.selectedTaskID
+        isCreatingTask = false
+        if persistTaskLibrary() {
+            statusMessage = "已保存任务“\(name)”。"
+        }
+    }
+
+    func deleteSelectedTask() {
+        guard !isWorking, let task = selectedTask else { return }
+        clearMessages()
+        var library = TaskLibrary(tasks: tasks, selectedTaskID: selectedTaskID)
+        library.delete(id: task.id)
+        tasks = library.tasks
+        selectedTaskID = nil
+        isCreatingTask = false
+        taskNameText = nextTaskName()
+        apply(configuration: .initial)
+        if persistTaskLibrary() {
+            statusMessage = "已删除任务“\(task.name)”。"
+        }
+    }
+
+    private func captureConfiguration() -> TaskConfiguration {
+        TaskConfiguration(
+            window: selectedWindow.map(SavedWindow.init) ?? selectedTask?.configuration.window,
+            selectedRelativePoint: selectedRelativePoint,
+            clickMode: clickMode,
+            executionMode: executionMode,
+            intervalText: intervalText,
+            countText: countText,
+            steps: steps,
+            flowCycleText: flowCycleText
+        )
+    }
+
+    private func apply(configuration: TaskConfiguration) {
+        selectedWindowID = configuration.window?.matchingWindow(in: windows)?.id
+        selectedRelativePoint = configuration.selectedRelativePoint
+        clickMode = configuration.clickMode
+        executionMode = configuration.executionMode
+        intervalText = configuration.intervalText
+        countText = configuration.countText
+        steps = configuration.steps
+        flowCycleText = configuration.flowCycleText
+    }
+
+    private func showMissingWindowMessageIfNeeded(for configuration: TaskConfiguration) {
+        if configuration.window != nil && selectedWindowID == nil {
+            errorMessage = "任务的原目标窗口不可用或无法唯一匹配，请打开原窗口后重新加载任务，或重新选择窗口。"
+        }
+    }
+
+    private func nextTaskName() -> String {
+        let existingNames = Set(tasks.map(\.name))
+        var index = tasks.count + 1
+        while existingNames.contains("任务 \(index)") {
+            index += 1
+        }
+        return "任务 \(index)"
+    }
+
+    @discardableResult
+    private func persistTaskLibrary() -> Bool {
+        do {
+            try taskStore.save(TaskLibrary(tasks: tasks, selectedTaskID: selectedTaskID))
+            return true
+        } catch {
+            errorMessage = "任务保存失败：\(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func choosePoint() {
+        clearMessages()
+        guard let window = validatedWindow() else { return }
+        presentPicker(for: window) { [weak self] point in
+            guard let self else { return }
+            selectedRelativePoint = point
+            statusMessage = "已选点：X \(Int(point.x))，Y \(Int(point.y))（相对窗口左上角）"
+        }
+    }
+
+    func addStep() {
+        guard !isWorking else { return }
+        clearMessages()
+        guard let window = validatedWindow() else { return }
+        presentPicker(for: window) { [weak self] point in
+            guard let self else { return }
+            steps.append(ClickStep(point: point))
+            statusMessage = "已添加第 \(steps.count) 步：X \(Int(point.x))，Y \(Int(point.y))"
+        }
+    }
+
+    func repickStep(id: UUID) {
+        guard !isWorking else { return }
+        clearMessages()
+        guard let window = validatedWindow() else { return }
+        presentPicker(for: window) { [weak self] point in
+            guard let self, let index = steps.firstIndex(where: { $0.id == id }) else { return }
+            steps[index].point = point
+            statusMessage = "第 \(index + 1) 步已更新为 X \(Int(point.x))，Y \(Int(point.y))"
+        }
+    }
+
+    func removeStep(id: UUID) {
+        guard !isWorking else { return }
+        steps.removeAll { $0.id == id }
+        clearMessages()
+    }
+
+    func updateStepMinimumInterval(id: UUID, text: String) {
+        guard let index = steps.firstIndex(where: { $0.id == id }) else { return }
+        steps[index].minimumIntervalText = text
+    }
+
+    func updateStepMaximumInterval(id: UUID, text: String) {
+        guard let index = steps.firstIndex(where: { $0.id == id }) else { return }
+        steps[index].maximumIntervalText = text
+    }
+
+    // 复用选点面板：仅处理取消与失败提示，成功时交回调用方。
+    private func presentPicker(for window: WindowDescriptor, onPicked: @escaping (CGPoint) -> Void) {
         let controller = PointPickerController()
         pickerController = controller
         controller.present(for: window) { [weak self] result in
@@ -99,8 +309,7 @@ final class AppModel: ObservableObject {
             pickerController = nil
             switch result {
             case .picked(let point):
-                selectedRelativePoint = point
-                statusMessage = "已选点：X \(Int(point.x))，Y \(Int(point.y))（相对窗口左上角）"
+                onPicked(point)
             case .cancelled:
                 statusMessage = "已取消选点"
             case .failed(let message):
@@ -199,6 +408,111 @@ final class AppModel: ObservableObject {
         statusMessage = "正在停止…"
     }
 
+    func startFlow() {
+        guard !isWorking else { return }
+        clearMessages()
+        guard let window = validatedWindow(), ensureAccessibilityPermission() else { return }
+
+        let plan: FlowConfiguration.Plan
+        switch FlowConfiguration.plan(steps: steps, cyclesText: flowCycleText) {
+        case .failure(let error):
+            errorMessage = error.message
+            return
+        case .success(let value):
+            plan = value
+        }
+
+        let mode = clickMode
+        isWorking = true
+        isRunningFlow = true
+        statusMessage = "准备运行事件流…"
+        diagLog("flow start: window=\(window.id) steps=\(plan.steps.count) cycles=\(plan.cycles) mode=\(mode.title)")
+
+        flowTask = Task { [weak self] in
+            guard let self else { return }
+            var cycle = 0
+            var totalClicks = 0
+            var didFail = false
+
+            loop: while !Task.isCancelled {
+                cycle += 1
+                for (index, step) in plan.steps.enumerated() {
+                    if Task.isCancelled { break loop }
+                    do {
+                        _ = try await performClick(windowID: window.id, point: step.point, mode: mode)
+                        totalClicks += 1
+                        statusMessage = "第 \(cycle) 轮 · 第 \(index + 1)/\(plan.steps.count) 步已点击"
+                        diagLog("flow click: cycle=\(cycle) step=\(index + 1)/\(plan.steps.count) point=(\(Int(step.point.x)),\(Int(step.point.y)))")
+                    } catch is CancellationError {
+                        break loop
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        didFail = true
+                        break loop
+                    }
+
+                    // 最后一步的等待同样作用于轮次之间；整条流程的最后一步不再等待。
+                    let isLastStep = index == plan.steps.count - 1
+                    let isLastCycle = cycle >= plan.cycles
+                    if !(isLastStep && isLastCycle) {
+                        do {
+                            try await Task.sleep(nanoseconds: UInt64(step.randomInterval() * 1_000_000_000))
+                        } catch {
+                            break loop
+                        }
+                    }
+                }
+                if cycle >= plan.cycles { break }
+            }
+
+            let wasCancelled = Task.isCancelled
+            flowTask = nil
+            isWorking = false
+            isRunningFlow = false
+            diagLog("flow end: cancelled=\(wasCancelled) failed=\(didFail) cycles=\(cycle) clicks=\(totalClicks)")
+            if wasCancelled {
+                statusMessage = "已停止事件流：\(cycle) 轮、\(totalClicks) 次点击。"
+            } else if didFail {
+                statusMessage = "事件流已停止：\(cycle) 轮、\(totalClicks) 次点击。"
+            } else {
+                statusMessage = "事件流已完成：\(cycle) 轮、\(totalClicks) 次点击。"
+            }
+        }
+    }
+
+    func stopFlow() {
+        guard flowTask != nil else { return }
+        flowTask?.cancel()
+        statusMessage = "正在停止事件流…"
+    }
+
+    // ⌃⌥Esc 全局紧急停止：不依赖鼠标、不依赖本应用是否在前台。
+    private func installEmergencyHotkey() {
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            _ = self?.handleEmergencyKey(event)
+        }
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.handleEmergencyKey(event) else { return event }
+            return nil
+        }
+    }
+
+    private func handleEmergencyKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard event.keyCode == 53,
+              modifiers.contains(.control),
+              modifiers.contains(.option),
+              !modifiers.contains(.command),
+              !modifiers.contains(.shift) else {
+            return false
+        }
+        guard isRepeating || isRunningFlow else { return false }
+        if isRepeating { stopRepeating() }
+        if isRunningFlow { stopFlow() }
+        statusMessage = "已通过 ⌃⌥Esc 紧急停止。"
+        return true
+    }
+
     func openAccessibilitySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
             return
@@ -212,6 +526,16 @@ final class AppModel: ObservableObject {
             return nil
         }
         return (selectedWindowID, selectedRelativePoint)
+    }
+
+    private func validatedWindow() -> WindowDescriptor? {
+        guard let selectedWindowID,
+              let window = windowService.window(withID: selectedWindowID) else {
+            errorMessage = ClickError.targetWindowUnavailable.localizedDescription
+            refreshWindows()
+            return nil
+        }
+        return window
     }
 
     private func ensureAccessibilityPermission() -> Bool {

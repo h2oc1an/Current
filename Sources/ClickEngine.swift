@@ -3,7 +3,7 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
-enum ClickMode: String, CaseIterable, Identifiable {
+enum ClickMode: String, CaseIterable, Identifiable, Codable {
     case foreground
     case windowRouted
     case publicPID

@@ -10,10 +10,12 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - Sources
+      - Resources
     settings:
       base:
         # 沿用旧 Bundle ID，避免辅助功能授权失效（TCC 按 Bundle ID + 签名标识）。
         PRODUCT_BUNDLE_IDENTIFIER: com.h2ocean.WindowClicker
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Current
         ENABLE_APP_SANDBOX: NO
