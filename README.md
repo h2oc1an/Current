@@ -121,3 +121,7 @@ Documentation/               README 界面截图
 - [NSExceptional/winctl](https://github.com/NSExceptional/winctl)：窗口路由消融实验
 - [trycua/cua](https://github.com/trycua/cua)：后台点击与焦点保护实现
 - [koekeishiya/yabai](https://github.com/koekeishiya/yabai)：窗口焦点管理方案
+
+## 开源协议
+
+Current 基于 [MIT License](LICENSE) 开源，允许自由使用、修改和分发，但需保留原始版权与许可声明。
