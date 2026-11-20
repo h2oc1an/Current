@@ -1,7 +1,7 @@
 # Current
 
 <p align="center">
-  <img src="Resources/Assets.xcassets/HomeLogo.imageset/CURRENT.png" width="150" alt="Current Logo">
+  <img src="Resources/Assets.xcassets/HomeLogo.imageset/CURRENT.png?v=2" width="150" alt="Current Logo">
   <br>
   原生 macOS 窗口自动点击工具
   <br>
